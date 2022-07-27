@@ -2,11 +2,12 @@ package bloodlabnet
 
 import (
 	"fmt"
-	"github.com/DRK-Blutspende-BaWueHe/go-bloodlab-net/protocol/utilities"
 	"log"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/DRK-Blutspende-BaWueHe/go-bloodlab-net/protocol/utilities"
 
 	"net"
 
@@ -534,6 +535,164 @@ func TestLis1A1Protocol(t *testing.T) {
 			} else {
 				t.Error(fmt.Sprint("Invalid response. Expected:", rec.Data, "(", string(rec.Data), ") but got ", data, "(", string(data), ")"))
 			}
+		}
+	}
+
+	tcpServer.Stop()
+}
+
+// Send a full transmission, then EOT and without a disconnect the 2nd transmission and EOT, then disconnect
+// expecting the data-handler to be called twice (once for each block until eot)
+func TestLis1A1Protocol_EOTInTheMiddle(t *testing.T) {
+
+	tcpServer := CreateNewTCPServerInstance(4011,
+		protocol.Lis1A1Protocol(protocol.DefaultLis1A1ProtocolSettings().DisableStrictChecksum()),
+		NoLoadBalancer,
+		100,
+		DefaultTCPServerSettings)
+
+	fmt.Println("Server running ? ")
+
+	var handler genericRecordingHandler
+	handler.receiveQ = make(chan []byte, 500)
+	go tcpServer.Run(&handler)
+
+	fmt.Println("Run client")
+	clientConn, err := net.Dial("tcp", "127.0.0.1:4011")
+	if err != nil {
+		log.Fatalf("Failed to dial (this is not an error, rather a problem of the unit test itself) : %s", err)
+	}
+
+	communicationFlow := []Comm{
+		{Data: []byte{utilities.ENQ}, Receive: false},
+		{Data: []byte{utilities.ACK}, Receive: true},
+		{Data: []byte{utilities.STX}, Receive: false},
+		{Data: []byte("1H|\\^&|||"), Receive: false},
+		{Data: []byte{utilities.CR}, Receive: false},
+		{Data: []byte{utilities.ETX}, Receive: false},
+		{Data: []byte{'5', '9'}, Receive: false},
+		{Data: []byte{utilities.CR, utilities.LF}, Receive: false},
+		{Data: []byte{utilities.ACK}, Receive: true},
+
+		{Data: []byte{utilities.STX}, Receive: false},
+		{Data: []byte("2P|1||777025164810"), Receive: false},
+		{Data: []byte{utilities.CR}, Receive: false},
+		{Data: []byte{utilities.ETX}, Receive: false},
+		{Data: []byte{'A', '7'}, Receive: false},
+		{Data: []byte{utilities.CR, utilities.LF}, Receive: false},
+		{Data: []byte{utilities.ACK}, Receive: true},
+
+		{Data: []byte{utilities.STX}, Receive: false},
+		{Data: []byte("3O|1|||^^^SARSCOV2IGG||20200811095913"), Receive: false},
+		{Data: []byte{utilities.CR}, Receive: false},
+		{Data: []byte{utilities.ETX}, Receive: false},
+		{Data: []byte{'B', '8'}, Receive: false},
+		{Data: []byte{utilities.CR, utilities.LF}, Receive: false},
+		{Data: []byte{utilities.ACK}, Receive: true},
+
+		{Data: []byte{utilities.STX}, Receive: false},
+		{Data: []byte("4R|1|^^^SARSCOV2IGG|0,1|Ratio|"), Receive: false},
+		{Data: []byte{utilities.CR}, Receive: false},
+		{Data: []byte{utilities.ETX}, Receive: false},
+		{Data: []byte{'3', 'B'}, Receive: false},
+		{Data: []byte{utilities.CR, utilities.LF}, Receive: false},
+		{Data: []byte{utilities.ACK}, Receive: true},
+
+		{Data: []byte{utilities.STX}, Receive: false},
+		{Data: []byte("0L|1|N"), Receive: false},
+		{Data: []byte{utilities.CR}, Receive: false},
+		{Data: []byte{utilities.ETX}, Receive: false},
+		{Data: []byte{'0', '3'}, Receive: false},
+		{Data: []byte{utilities.CR, utilities.LF}, Receive: false},
+
+		// ----------------------------------------------
+		// EOT End of Text without disconnect now
+		{Data: []byte{utilities.EOT}, Receive: false},
+
+		{Data: []byte{utilities.ENQ}, Receive: false},
+		{Data: []byte{utilities.ACK}, Receive: true},
+		{Data: []byte{utilities.STX}, Receive: false},
+		{Data: []byte("1H|\\^&|||"), Receive: false},
+		{Data: []byte{utilities.CR}, Receive: false},
+		{Data: []byte{utilities.ETX}, Receive: false},
+		{Data: []byte{'5', '9'}, Receive: false},
+		{Data: []byte{utilities.CR, utilities.LF}, Receive: false},
+		{Data: []byte{utilities.ACK}, Receive: true},
+
+		{Data: []byte{utilities.STX}, Receive: false},
+		{Data: []byte("2P|1||777025164810"), Receive: false},
+		{Data: []byte{utilities.CR}, Receive: false},
+		{Data: []byte{utilities.ETX}, Receive: false},
+		{Data: []byte{'A', '7'}, Receive: false},
+		{Data: []byte{utilities.CR, utilities.LF}, Receive: false},
+		{Data: []byte{utilities.ACK}, Receive: true},
+
+		{Data: []byte{utilities.STX}, Receive: false},
+		{Data: []byte("3O|1|||^^^SARSCOV2IGG||20200811095913"), Receive: false},
+		{Data: []byte{utilities.CR}, Receive: false},
+		{Data: []byte{utilities.ETX}, Receive: false},
+		{Data: []byte{'B', '8'}, Receive: false},
+		{Data: []byte{utilities.CR, utilities.LF}, Receive: false},
+		{Data: []byte{utilities.ACK}, Receive: true},
+
+		{Data: []byte{utilities.STX}, Receive: false},
+		{Data: []byte("4R|1|^^^SARSCOV2IGG|0,2|Ratio|"), Receive: false},
+		{Data: []byte{utilities.CR}, Receive: false},
+		{Data: []byte{utilities.ETX}, Receive: false},
+		{Data: []byte{'3', 'B'}, Receive: false},
+		{Data: []byte{utilities.CR, utilities.LF}, Receive: false},
+		{Data: []byte{utilities.ACK}, Receive: true},
+
+		{Data: []byte{utilities.STX}, Receive: false},
+		{Data: []byte("0L|1|N"), Receive: false},
+		{Data: []byte{utilities.CR}, Receive: false},
+		{Data: []byte{utilities.ETX}, Receive: false},
+		{Data: []byte{'0', '3'}, Receive: false},
+		{Data: []byte{utilities.CR, utilities.LF}, Receive: false},
+		{Data: []byte{utilities.EOT}, Receive: false},
+	}
+
+	fmt.Println("Start running")
+
+	for _, rec := range communicationFlow {
+		if !rec.Receive {
+
+			clientConn.Write(rec.Data)
+
+		} else {
+
+			data := make([]byte, 500)
+			n, err := clientConn.Read(data)
+
+			assert.Nil(t, err)
+
+			if n == len(rec.Data) {
+				for i, s := range data {
+					if s != data[i] {
+						t.Error(fmt.Sprint("Invalid response. Expected:", rec.Data, "(", string(rec.Data), ") but got ", data, "(", string(data), ")"))
+					}
+				}
+			} else {
+				t.Error(fmt.Sprint("Invalid response. Expected:", rec.Data, "(", string(rec.Data), ") but got ", data, "(", string(data), ")"))
+			}
+		}
+	}
+
+	select {
+	case transmission1 := <-handler.receiveQ:
+		assert.NotNil(t, transmission1)
+	case <-time.After(2 * time.Second):
+		{
+			t.Fatalf("Timed out waiting for 1st Transmission of 2")
+		}
+	}
+
+	select {
+	case transmission2 := <-handler.receiveQ:
+		assert.NotNil(t, transmission2)
+	case <-time.After(2 * time.Second):
+		{
+			t.Fatalf("Timed out waiting for 2nd Transmission of 2")
 		}
 	}
 
