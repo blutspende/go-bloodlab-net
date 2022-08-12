@@ -167,7 +167,7 @@ func (instance *ftpServerInstance) runWithSFTP(handler Handler) {
 
 	sshConfig.Timeout = instance.config.dialTimeout
 
-	ftpserver := fmt.Sprintf("%s:%s", instance.host, instance.port)
+	ftpserver := fmt.Sprintf("%s:%d", instance.host, instance.port)
 
 	sshConnection, err := ssh.Dial("tcp", ftpserver, sshConfig)
 	if err != nil {
@@ -263,7 +263,7 @@ func (instance *ftpServerInstance) runWithFTP(handler Handler) {
 
 	var err error
 
-	ftpClient, err := ftp.Dial(fmt.Sprintf("%s:%s", instance.host, instance.port), ftp.DialWithTimeout(instance.config.dialTimeout))
+	ftpClient, err := ftp.Dial(fmt.Sprintf("%s:%d", instance.host, instance.port), ftp.DialWithTimeout(instance.config.dialTimeout))
 	if err != nil {
 		log.Error().Err(err).Msg("Open - Dial")
 		// TODO Error handling
