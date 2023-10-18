@@ -2,10 +2,13 @@ package protocol
 
 import (
 	"fmt"
-	"github.com/DRK-Blutspende-BaWueHe/go-bloodlab-net/protocol/utilities"
-	"github.com/stretchr/testify/assert"
+	"net"
 	"os"
 	"testing"
+	"time"
+
+	"github.com/DRK-Blutspende-BaWueHe/go-bloodlab-net/protocol/utilities"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestComputeChecksum(t *testing.T) {
@@ -57,4 +60,38 @@ func TestSendData(t *testing.T) {
 	_, err := instance.Send(&mc, message)
 
 	assert.Nil(t, err)
+}
+
+func TestSendAndReceiveThroughTCPSocket(t *testing.T) {
+
+	impsend := Lis1A1Protocol(DefaultLis1A1ProtocolSettings().EnableFrameNumber())
+
+	testdata := [][]byte{
+		[]byte("H|\\^&|||LIS|||||ImmuLINK|||LIS2-A2|20231014162427"),
+		[]byte("P|1|"),
+		[]byte("O|1|VAL231017_001||^^^Pool_Cell|R||||||N||||Blood^Product"),
+		[]byte("L|1|N"),
+	}
+	driver, instrument := net.Pipe()
+
+	go func() {
+		impreceive := Lis1A1Protocol(DefaultLis1A1ProtocolSettings())
+		data_receive, err := impreceive.Receive(driver)
+		assert.Nil(t, err)
+
+		expected_outpout := []byte{}
+		for _, row := range testdata {
+			fmt.Printf("Received:%s\n", string(row))
+			expected_outpout = append(expected_outpout, row...)
+			expected_outpout = append(expected_outpout, 0x0D)
+		}
+
+		assert.Equal(t, expected_outpout, data_receive)
+	}()
+
+	bytes, err := impsend.Send(instrument, testdata)
+	assert.Nil(t, err)
+	assert.Equal(t, 135, bytes)
+
+	time.Sleep(10 * time.Second)
 }
