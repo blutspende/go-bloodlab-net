@@ -2,10 +2,11 @@ package protocol
 
 import (
 	"fmt"
-	"github.com/blutspende/go-bloodlab-net/protocol/utilities"
-	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
+
+	"github.com/blutspende/go-bloodlab-net/protocol/utilities"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestComputeChecksum(t *testing.T) {
@@ -21,6 +22,16 @@ func TestComputeChecksum(t *testing.T) {
 	frameNumber = "2"
 	checksum = computeChecksum([]byte(frameNumber), []byte(message), specialChars)
 	assert.NotEqual(t, expectedChecksum, checksum)
+}
+
+// In this test an additional CR is added before ETX (this is something the Becom(Biorad) would need)
+func TestComputeChecksumWithCRenclosedInMessage(t *testing.T) {
+
+	specialChars := []byte{utilities.ETX}
+	message := "R|1|^^^XM^PR80^KP: IAT(5053)^|0^^|C||||R||Kramer^|20230923114324|20230923123752|3|Manual workplace|1|Kramer\r"
+	checksum := computeChecksum([]byte("6"), []byte(message), specialChars)
+
+	assert.Equal(t, []byte(fmt.Sprintf("%02X", 0x37)), checksum)
 }
 
 func TestSendData(t *testing.T) {
