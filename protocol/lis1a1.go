@@ -564,7 +564,10 @@ func (proto *lis1A1) send(conn net.Conn, data [][]byte, recursionDepth int) (int
 
 		}
 
-		conn.Write([]byte{utilities.EOT})
+		_, err = conn.Write([]byte{utilities.EOT})
+		if err != nil {
+			return -1, err
+		}
 
 		if os.Getenv("BNETDEBUG") == "true" {
 			fmt.Printf("bnet.Send Transmission sucessfully completed\n")
