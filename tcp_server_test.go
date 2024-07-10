@@ -202,14 +202,18 @@ func TestTCPServerMaxConnections(t *testing.T) {
 	tcpServer.WaitReady()
 
 	conn1, err1 := net.Dial("tcp", "127.0.0.1:4002")
+	conn1.Write([]byte("1"))
+	// connections only establish a session (therefore increase connection count) after sending at least one byte
 	assert.Nil(t, err1)
 	assert.NotNil(t, conn1)
 
 	conn2, err2 := net.Dial("tcp", "127.0.0.1:4002")
+	conn2.Write([]byte("1"))
 	assert.Nil(t, err2)
 	assert.NotNil(t, conn2)
 
 	conn3, err3 := net.Dial("tcp", "127.0.0.1:4002")
+	conn3.Write([]byte("1"))
 	assert.Nil(t, err3)
 	assert.NotNil(t, conn3)
 

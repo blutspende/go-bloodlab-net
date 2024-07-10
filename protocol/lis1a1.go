@@ -245,9 +245,15 @@ func (proto *lis1A1) ensureReceiveThreadRunning(conn net.Conn) {
 			}
 			if err != nil {
 				if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
-					fsm.Init()
-					continue // on timeout....
+					log.Warn().Err(err).Str("sourceIP", conn.RemoteAddr().String()).Msg("read timeout")
+					proto.receiveThreadIsRunning = false
+					proto.receiveQ <- protocolMessage{
+						Status: DISCONNECT,
+						Data:   []byte(err.Error()),
+					}
+					return
 				} else if opErr, ok := err.(*net.OpError); ok && opErr.Op == "read" {
+					log.Warn().Err(err).Str("sourceIP", conn.RemoteAddr().String()).Msg("read error")
 					proto.receiveThreadIsRunning = false
 					proto.receiveQ <- protocolMessage{
 						Status: DISCONNECT,
@@ -262,7 +268,7 @@ func (proto *lis1A1) ensureReceiveThreadRunning(conn net.Conn) {
 					proto.receiveThreadIsRunning = false
 					return
 				}
-
+				log.Warn().Err(err).Str("sourceIP", conn.RemoteAddr().String()).Msg("read error")
 				proto.receiveQ <- protocolMessage{
 					Status: DISCONNECT,
 					Data:   []byte(err.Error()),
