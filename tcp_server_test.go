@@ -2,6 +2,7 @@ package bloodlabnet
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"testing"
@@ -62,8 +63,10 @@ func (s *testSessionMock) Error(session Session, errorType ErrorType, err error)
 // should be read instantly.
 // --------------------------------------------------------------------------------------------
 func TestRawDataProtocolWithTimeoutFlushMs(t *testing.T) {
+	settings := DefaultTCPServerSettings
+	settings.SessionAfterFirstByte = false
 	tcpServer := CreateNewTCPServerInstance(4001,
-		protocol.Raw(protocol.DefaultRawProtocolSettings()), NoLoadBalancer, 100, DefaultTCPServerSettings)
+		protocol.Raw(protocol.DefaultRawProtocolSettings()), NoLoadBalancer, 100, settings)
 
 	var handler testSessionMock
 	handler.receiveQ = make(chan []byte, 500)
@@ -179,6 +182,7 @@ func TestSendingLargeAmount(t *testing.T) {
 	assert.Equal(t, expectString, string(in))
 
 	clientConn.Close()
+	tcpServer.Stop()
 }
 
 // --------------------------------------------------------------------------------------------
@@ -225,6 +229,79 @@ func TestTCPServerMaxConnections(t *testing.T) {
 	tcpServer.Stop()
 }
 
+func TestSessionLimitDoesNotAffectConnections(t *testing.T) {
+	settings := DefaultTCPServerSettings
+	settings.SessionInitiationTimeout = time.Duration(1)
+	tcpServer := CreateNewTCPServerInstance(4070,
+		protocol.Raw(protocol.DefaultRawProtocolSettings()),
+		NoLoadBalancer,
+		2,
+		settings)
+
+	handlerTcp := &testSessionMock{
+		receiveQ:          make(chan []byte, 500),
+		signalReady:       make(chan bool, 100), // buffered so that we can ignore this signal without blocking process
+		occuredErrorTypes: make([]ErrorType, 0),
+	}
+
+	go tcpServer.Run(handlerTcp)
+	tcpServer.WaitReady()
+
+	// first and second connections do not send data, therefore do not count towards max connections limit
+	conn1, err1 := net.Dial("tcp", "127.0.0.1:4070")
+	assert.Nil(t, err1)
+	assert.NotNil(t, conn1)
+	conn2, err2 := net.Dial("tcp", "127.0.0.1:4070")
+	assert.Nil(t, err2)
+	assert.NotNil(t, conn2)
+
+	// third connection sends one byte to the TCP server, and a session is created, but since the first two did not create new sessions,
+	// there is no error for exceeding maximum connections
+	conn3, err3 := net.Dial("tcp", "127.0.0.1:4070")
+	conn3.Write([]byte{0xFF})
+	assert.Nil(t, err3)
+	assert.NotNil(t, conn3)
+	time.Sleep(time.Second * 1)
+	assert.Equal(t, 0, len(handlerTcp.occuredErrorTypes))
+	select { // expecting to receive the same byte
+	case receivedMsg := <-handlerTcp.receiveQ:
+		assert.Equal(t, []byte{0xFF}, receivedMsg)
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Can not receive messages from the client")
+	}
+
+	tcpServer.Stop()
+}
+
+func TestSessionTerminatesIfFirstByteNotSent(t *testing.T) {
+	settings := DefaultTCPServerSettings
+	settings.SessionInitiationTimeout = time.Second
+	tcpServer := CreateNewTCPServerInstance(4003,
+		protocol.Raw(protocol.DefaultRawProtocolSettings()),
+		NoLoadBalancer,
+		2,
+		settings)
+
+	handlerTcp := &testSessionMock{
+		receiveQ:          make(chan []byte, 500),
+		signalReady:       make(chan bool, 100), // buffered so that we can ignore this signal without blocking process
+		occuredErrorTypes: make([]ErrorType, 0),
+	}
+
+	go tcpServer.Run(handlerTcp)
+	tcpServer.WaitReady()
+
+	conn1, err := net.Dial("tcp", "127.0.0.1:4003")
+	assert.Nil(t, err)
+	// reading from a socket is the only reliable way to determine whether the server side had been closed, or not
+	conn1.SetDeadline(time.Now().Add(settings.SessionInitiationTimeout * 2))
+	b := make([]byte, 2)
+	_, err = conn1.Read(b)
+	assert.Equal(t, io.EOF, err)
+
+	tcpServer.Stop()
+}
+
 // --------------------------------------------------------------------------------------------
 // Server identifies the remote-Address on direct connections
 // --------------------------------------------------------------------------------------------
@@ -245,6 +322,7 @@ func TestTCPServerIdentifyRemoteAddress(t *testing.T) {
 	tcpServer.WaitReady()
 
 	conn1, err1 := net.Dial("tcp", "127.0.0.1:4005")
+	conn1.Write([]byte{0xFF})
 	assert.Nil(t, err1)
 	assert.NotNil(t, conn1)
 
@@ -252,6 +330,8 @@ func TestTCPServerIdentifyRemoteAddress(t *testing.T) {
 	time.Sleep(time.Second * 1) // sessions start async, therefor a short waitign is required
 
 	assert.Equal(t, "127.0.0.1", handlerTcp.lastConnectedIp)
+
+	tcpServer.Stop()
 }
 
 // --------------------------------------------------------------------------------------------
@@ -290,6 +370,8 @@ func TestTCPServerConnectionInitiationTimeout(t *testing.T) {
 	}()
 	time.Sleep(25 * time.Second)
 	assert.Equal(t, 0, len(handlerTcp.receiveQ))
+
+	tcpServer.Stop()
 }
 
 // --------------------------------------------------------------------------------------------
