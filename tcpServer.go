@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/blutspende/go-bloodlab-net/protocol/utilities"
 	"io"
 	"math/rand"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/blutspende/go-bloodlab-net/protocol/utilities"
 
 	"github.com/blutspende/go-bloodlab-net/protocol"
 	"github.com/pires/go-proxyproto"
@@ -60,8 +61,6 @@ func (b BufferedConn) FirstByteOrError(howLong time.Duration) error {
 
 	if howLong > 0 {
 		b.Conn.SetReadDeadline(time.Now().Add(howLong))
-		//reset to infinite deadline
-		//protocol implementations will set necessary timeouts in further steps
 		defer b.Conn.SetReadDeadline(time.Time{})
 	}
 	_, err := b.Peek(1)
@@ -130,8 +129,9 @@ func (instance *tcpServerInstance) Run(handler Handler) {
 
 	rand.Seed(time.Now().Unix())
 
-	proxyListener := &proxyproto.Listener{Listener: instance.listener}
-	defer proxyListener.Close()
+	if instance.connectionType == HAProxySendProxyV2 {
+		instance.listener = &proxyproto.Listener{Listener: instance.listener}
+	}
 
 	instance.isRunning = true
 	instance.mainLoopActive.Add(1)
@@ -145,7 +145,7 @@ func (instance *tcpServerInstance) Run(handler Handler) {
 		default:
 		}
 
-		connection, err := proxyListener.Accept()
+		connection, err := instance.listener.Accept()
 		if err != nil {
 			if instance.handler != nil && instance.isRunning {
 				go instance.handler.Error(nil, ErrorAccept, err)
