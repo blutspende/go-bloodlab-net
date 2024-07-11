@@ -157,7 +157,7 @@ func (instance *tcpServerInstance) Run(handler Handler) {
 
 		if utilities.Contains(remoteIPAddress, instance.config.BlackListedIPAddresses) {
 			connection.Close()
-			log.Trace().Str("ip", remoteIPAddress).Msg("incoming connection from blacklisted ip address closed")
+			//log.Trace().Str("ip", remoteIPAddress).Msg("incoming connection from blacklisted ip address closed")
 			continue
 		}
 		bufferedConn := newBufferedConn(connection)
