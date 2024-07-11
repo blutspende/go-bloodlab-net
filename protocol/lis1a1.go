@@ -289,7 +289,9 @@ func (proto *lis1A1) ensureReceiveThreadRunning(conn net.Conn) {
 				}
 				switch action {
 				case utilities.Ok:
+					log.Trace().Msg("ok action received")
 				case utilities.Error:
+					log.Trace().Msg("error action received")
 					// error
 					protocolMsg := protocolMessage{
 						Status: ERROR,
@@ -311,13 +313,14 @@ func (proto *lis1A1) ensureReceiveThreadRunning(conn net.Conn) {
 					return
 
 				case LineReceived:
+					log.Trace().Msg("line received action received")
 					// append Data
 					lastMessage = messageBuffer
 					fileBuffer = append(fileBuffer, lastMessage)
 					fsm.ResetBuffer()
 
 				case utilities.CheckSum:
-
+					log.Trace().Msg("checksum action received")
 					if proto.settings.strictChecksumValidation {
 						currentChecksum := computeChecksum([]byte(proto.state.currentFrameNumber), lastMessage, []byte{utilities.ETX})
 
@@ -329,6 +332,7 @@ func (proto *lis1A1) ensureReceiveThreadRunning(conn net.Conn) {
 
 							_, err = conn.Write([]byte{utilities.NAK})
 							if err != nil {
+								log.Trace().Msg("could not send NAK to client")
 								protocolMsg.Data = append(protocolMsg.Data, []byte(err.Error())...)
 							}
 
@@ -341,6 +345,7 @@ func (proto *lis1A1) ensureReceiveThreadRunning(conn net.Conn) {
 					fsm.ResetBuffer()
 
 				case utilities.Finished:
+					log.Trace().Msg("finished action received")
 					// send fileData
 					proto.transferMessageToHandler(fileBuffer)
 
@@ -352,6 +357,7 @@ func (proto *lis1A1) ensureReceiveThreadRunning(conn net.Conn) {
 					fsm.ResetBuffer()
 					fsm.Init()
 				case JustAck:
+					log.Trace().Msg("just ack action received")
 					conn.SetDeadline(time.Time{})
 					bytes, err := conn.Write([]byte{utilities.ACK})
 					if bytes != 1 {
@@ -366,6 +372,7 @@ func (proto *lis1A1) ensureReceiveThreadRunning(conn net.Conn) {
 						fsm.Init()
 					}
 				case FrameNumber:
+					log.Trace().Msg("frame number action received")
 					if proto.settings.strictFrameOrder && string(ascii) != strconv.Itoa(nextExpectedFrameNumber) {
 						// Check valid frame number
 						protocolMsg := protocolMessage{
@@ -393,6 +400,7 @@ func (proto *lis1A1) ensureReceiveThreadRunning(conn net.Conn) {
 						fsm.ResetBuffer()
 					}
 				default:
+					log.Trace().Interface("action", action).Msg("unknown action received")
 					protocolMsg := protocolMessage{
 						Status: ERROR,
 						Data:   []byte("Invalid action code "),
